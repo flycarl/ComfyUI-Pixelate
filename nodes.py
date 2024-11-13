@@ -2,6 +2,7 @@ import torch
 import numpy as np
 from .utils import resize_pixel_art, convert_to_grayscale, convert_to_bw
 from .utils import PaletteGenerator, Dithering
+import time
 
 class ComfyUIPixelArtAdvanced:
     """
@@ -16,9 +17,10 @@ class ComfyUIPixelArtAdvanced:
                 "downscale_factor": ("INT", {
                     "default": 4,
                     "min": 1,
-                    "max": 16,
+                    "max": 32,
                     "step": 1
                 }),
+                "scale_mode": (["auto", "nearest", "area", "linear", "cubic", "lanczos"],),
                 "rescale_to_original": ("BOOLEAN", {"default": False}),
                 "color_mode": (["rgb", "grayscale", "bw"],),
                 "colors": ("INT", {
@@ -27,15 +29,13 @@ class ComfyUIPixelArtAdvanced:
                     "max": 256,
                     "step": 1
                 }),
-                "quantization_method": (["kmeans", "median_cut"],),
+                "quantization_method": (["auto", "kmeans", "mediancut", "maxcoverage", "fastoctree", "libimagequant", "median_cut"],),
                 "dithering": (["none", "floyd-steinberg"],),
-                "palette_type": (["adaptive", "custom", "from_image"],),
             },
             "optional": {
-                "custom_palette": ("STRING", {"default": "15,56,15;48,98,48;139,172,15;155,188,15"}),
                 "palette_image": ("IMAGE",),
                 "palette_size": ("INT", {
-                    "default": 16,
+                    "default": 32,
                     "min": 2,
                     "max": 256,
                     "step": 1
@@ -47,49 +47,65 @@ class ComfyUIPixelArtAdvanced:
     FUNCTION = "process"
     CATEGORY = "image/Pixel Art"
 
-    def process(self, image, downscale_factor, rescale_to_original, color_mode, colors, 
-                quantization_method, dithering, palette_type, 
-                custom_palette=None, palette_image=None, palette_size=16):
+    def process(self, image, downscale_factor, scale_mode,
+                rescale_to_original, color_mode, colors, 
+                quantization_method, dithering, palette_image=None, palette_size=16):
+        start_time = time.time()
+        
         # Convert from torch tensor to numpy
         image_np = image[0].cpu().numpy()
         image_np = (image_np * 255).astype(np.uint8)
         
+        print(f"Conversion to numpy: {time.time() - start_time:.2f}s   ")
+        
         # Store original size if rescaling is needed
         original_size = (image_np.shape[1], image_np.shape[0]) if rescale_to_original else None
         
-        # Apply pixel art scaling
-        image_np = resize_pixel_art(image_np, downscale_factor, rescale_to_original, original_size)
+        # Apply pixel art scaling with new parameters
+        t0 = time.time()
+        image_np = resize_pixel_art(
+            image_np,
+            downscale_factor,
+            rescale_to_original=rescale_to_original,
+            original_size=original_size,
+            scale_down_mode=scale_mode
+        )
+        print(f"Pixel art scaling ({scale_mode}): {time.time() - t0:.2f}s   ")
         
         # Apply color mode conversion
+        t0 = time.time()
         if color_mode == "grayscale":
             image_np = convert_to_grayscale(image_np)
         elif color_mode == "bw":
             image_np = convert_to_bw(image_np)
+        print(f"Color mode conversion: {time.time() - t0:.2f}s   ")
             
         # Get palette
-        if palette_type == "custom" and custom_palette:
-            palette = PaletteGenerator.parse_custom_palette(custom_palette)
-            if palette is None:
-                palette = PaletteGenerator.kmeans_palette(image_np, colors)
-        elif palette_type == "from_image" and palette_image is not None:
+        t0 = time.time()
+        if palette_image is not None:
             # Convert palette image from torch tensor to numpy
             palette_np = palette_image[0].cpu().numpy()
             palette_np = (palette_np * 255).astype(np.uint8)
-            palette = PaletteGenerator.kmeans_palette(palette_np, palette_size)
+            palette = PaletteGenerator.get_palette(palette_np, palette_size)
         else:  # adaptive
-            if quantization_method == "kmeans":
-                palette = PaletteGenerator.kmeans_palette(image_np, colors)
-            else:  # median_cut
-                palette = PaletteGenerator.median_cut_palette(image_np, colors)
+            print(f"get_palette use {quantization_method}")
+            palette = PaletteGenerator.get_palette(image_np, colors, quantization_method)
+
+        print(f"Palette generation: {time.time() - t0:.2f}s   ")
                 
-        # Apply dithering and quantization
+        # Apply dithering if requested
+        t0 = time.time()
         if dithering == "floyd-steinberg":
-            result = Dithering.floyd_steinberg(image_np, palette)
+            image_np = Dithering.floyd_steinberg(image_np, palette)
         else:
-            result = Dithering.simple_quantize(image_np, palette)
+            image_np = Dithering.simple_quantize(image_np, palette)
+        print(f"Dithering: {time.time() - t0:.2f}s")
             
         # Convert back to torch tensor
-        result = torch.from_numpy(result.astype(np.float32) / 255.0)
+        result = torch.from_numpy(image_np.astype(np.float32) / 255.0)
         result = result.unsqueeze(0)
+        print(f"Conversion to tensor: {time.time() - t0:.2f}s   ")
+        
+        print(f"Total processing time: {time.time() - start_time:.2f}s   ")
         
         return (result,)

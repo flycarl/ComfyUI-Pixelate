@@ -3,17 +3,38 @@ import cv2
 from PIL import Image
 import colorsys
 
-def scale_down(image, scale_factor):
+def scale_down(image, scale_factor, mode='auto'):
     """
-    Downscale image by integer factor using area interpolation
+    Downscale image with advanced interpolation options
     
     Args:
         image: numpy array (H, W, C)
         scale_factor: int, factor to reduce image by
+        mode: str, interpolation mode:
+            - 'auto': Automatically select best method
+            - 'area': cv2.INTER_AREA (good for downscaling)
+            - 'nearest': cv2.INTER_NEAREST (preserves exact colors)
+            - 'linear': cv2.INTER_LINEAR (smooth but can blur)
+            - 'cubic': cv2.INTER_CUBIC (sharper than linear)
+            - 'lanczos': cv2.INTER_LANCZOS4 (high quality, can preserve edges)
     """
     h, w = image.shape[:2]
     small_h, small_w = h // scale_factor, w // scale_factor
-    return cv2.resize(image, (small_w, small_h), interpolation=cv2.INTER_AREA)
+
+    # Dictionary of interpolation methods
+    interpolation_methods = {
+        'nearest': cv2.INTER_NEAREST,  # Best for pixel art
+        'area': cv2.INTER_AREA,      # Good general downscaling
+        'linear': cv2.INTER_LINEAR,   # Smooth, can blur
+        'cubic': cv2.INTER_CUBIC,     # Sharper edges
+        'lanczos': cv2.INTER_LANCZOS4 # High quality
+    }
+    if mode == 'auto':
+        mode = 'area'
+
+    # Apply selected interpolation
+    return cv2.resize(image, (small_w, small_h), 
+                     interpolation=interpolation_methods.get(mode, cv2.INTER_AREA))
 
 def scale_up(image, scale_factor):
     """
@@ -27,22 +48,38 @@ def scale_up(image, scale_factor):
     large_h, large_w = h * scale_factor, w * scale_factor
     return cv2.resize(image, (large_w, large_h), interpolation=cv2.INTER_NEAREST)
 
-def resize_pixel_art(image, scale_factor, rescale_to_original=False, original_size=None):
+def resize_pixel_art(image, scale_factor, rescale_to_original=False, original_size=None, 
+                    scale_down_mode='auto'):
     """
-    Resize image using pixel art scaling
+    Resize image using advanced pixel art scaling methods
     
     Args:
         image: numpy array (H, W, C)
         scale_factor: int, factor to reduce image by
         rescale_to_original: bool, whether to rescale back to original size
         original_size: tuple (width, height), original image dimensions
+        scale_down_mode: str, interpolation mode:
+            - 'auto': Automatically select best method
+            - 'nearest': Best for pixel art
+            - 'area': Good for general downscaling
+            - 'linear': Smooth but can blur
+            - 'cubic': Sharper edges
+            - 'lanczos': High quality
+    Returns:
+        numpy array: Resized image
     """
-    # Scale down first
-    downscaled = scale_down(image, scale_factor)
+    # Scale down first using advanced methods
+    downscaled = scale_down(
+        image, 
+        scale_factor, 
+        scale_down_mode
+    )
     
     # If rescaling is requested and we have original size
     if rescale_to_original and original_size:
-        return cv2.resize(downscaled, original_size, interpolation=cv2.INTER_NEAREST)
+        h, w = original_size
+        # Always use nearest neighbor for upscaling to maintain pixel art look
+        return cv2.resize(downscaled, (w, h), interpolation=cv2.INTER_NEAREST)
     
     return downscaled
 
@@ -59,16 +96,126 @@ def convert_to_bw(image, threshold=127):
 
 class PaletteGenerator:
     @staticmethod
+    def pillow_palette(image, n_colors, method='libimagequant'):
+        """Generate palette using Pillow's quantization methods
+        
+        Methods:
+            - 'libimagequant': Highest quality, reasonable speed (default)
+            - 'mediancut': Fast, good quality
+            - 'maxcoverage': Better color coverage
+            - 'fastoctree': Fastest, slightly lower quality
+        """
+        # Convert numpy array to PIL Image
+        if isinstance(image, np.ndarray):
+            image = Image.fromarray(image)
+        
+        # Convert to RGB mode if needed
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
+            
+        # Quantize image
+        if method == 'mediancut':
+            quantized = image.quantize(colors=n_colors, method=Image.Quantize.MEDIANCUT)
+        elif method == 'maxcoverage':
+            quantized = image.quantize(colors=n_colors, method=Image.Quantize.MAXCOVERAGE)
+        elif method == 'fastoctree':
+            quantized = image.quantize(colors=n_colors, method=Image.Quantize.FASTOCTREE)
+        else:  # libimagequant (default)
+            quantized = image.quantize(colors=n_colors, method=Image.Quantize.LIBIMAGEQUANT)
+            
+        # Extract palette
+        palette = np.array(quantized.getpalette()[:n_colors*3]).reshape(-1, 3)
+        return palette
+
+    @staticmethod
+    def get_palette(image, n_colors, method='auto'):
+        """Smart palette generation using multiple methods
+        
+        Methods:
+            - 'auto': Choose best method based on image size and n_colors
+            - 'libimagequant': Pillow's high quality quantizer
+            - 'mediancut': Pillow's median cut
+            - 'maxcoverage': Pillow's maximum coverage
+            - 'fastoctree': Pillow's fast octree
+            - 'kmeans': OpenCV k-means clustering
+            - 'median_cut': Custom median cut implementation
+        """
+        # Auto method selection
+        if method == 'auto':
+            image_size = image.shape[0] * image.shape[1]
+            if image_size > 1000000 or n_colors > 32:  # Large image or many colors
+                method = 'fastoctree'
+            elif image_size > 500000:  # Medium image
+                method = 'libimagequant'
+            else:  # Small image
+                method = 'kmeans'
+
+        print(f'Using method: {method} image size: {image.shape[0] * image.shape[1]}   ')
+        # Use Pillow methods first
+        if method in ['libimagequant', 'mediancut', 'maxcoverage', 'fastoctree']:
+            return PaletteGenerator.pillow_palette(image, n_colors, method)
+        
+        # Fallback to OpenCV k-means
+        elif method == 'kmeans':
+            return PaletteGenerator.kmeans_palette(image, n_colors)
+        
+        # Custom median cut implementation
+        elif method == 'median_cut':
+            return PaletteGenerator.median_cut_palette(image, n_colors)
+        
+        else:
+            raise ValueError(f"Unknown method: {method}")
+
+    @staticmethod
     def kmeans_palette(image, n_colors):
-        """Generate palette using k-means clustering"""
+        """Fallback k-means clustering method"""
+        # Limit maximum colors for performance
+        n_colors = min(n_colors, 32)
         pixels = image.reshape(-1, 3).astype(np.float32)
         criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 200, 0.1)
-        _, _, palette = cv2.kmeans(pixels, n_colors, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
+        
+        try:
+            # Check if CUDA is available
+            if cv2.cuda.getCudaEnabledDeviceCount() > 0:
+                # Move data to GPU
+                gpu_mat = cv2.cuda_GpuMat()
+                gpu_mat.upload(pixels)
+                
+                # Run k-means with GPU acceleration
+                _, _, palette = cv2.kmeans(
+                    gpu_mat.download(), 
+                    n_colors, 
+                    None, 
+                    criteria, 
+                    10, 
+                    cv2.KMEANS_RANDOM_CENTERS + cv2.KMEANS_USE_GPU
+                )
+                print("Using GPU acceleration for k-means")
+                return palette
+                
+        except Exception as e:
+            print(f"GPU acceleration failed, falling back to CPU: {str(e)}")
+        
+        # CPU fallback with data reduction for better performance
+        if len(pixels) > 10000:
+            indices = np.random.choice(len(pixels), 10000, replace=False)
+            pixels = pixels[indices]
+            
+        # Run k-means on CPU
+        _, _, palette = cv2.kmeans(
+            pixels, 
+            n_colors, 
+            None, 
+            criteria, 
+            10, 
+            cv2.KMEANS_RANDOM_CENTERS
+        )
+        print("Using CPU for k-means")
         return palette
 
     @staticmethod
     def median_cut_palette(image, n_colors):
-        """Generate palette using median cut algorithm"""
+        """Fallback median cut implementation"""
         pixels = image.reshape(-1, 3)
         
         def cut_box(box_pixels):
@@ -87,16 +234,6 @@ class PaletteGenerator:
             boxes.extend([box1, box2])
 
         return np.array([np.mean(box, axis=0) for box in boxes])
-
-    @staticmethod
-    def parse_custom_palette(palette_str):
-        """Parse custom palette string in format 'R,G,B;R,G,B;...'"""
-        try:
-            return np.array([list(map(int, color.split(','))) 
-                           for color in palette_str.split(';')])
-        except:
-            return None
-
 class Dithering:
     @staticmethod
     def extract_palette_from_image(image, palette_size=16):
