@@ -27,9 +27,24 @@ def scale_up(image, scale_factor):
     large_h, large_w = h * scale_factor, w * scale_factor
     return cv2.resize(image, (large_w, large_h), interpolation=cv2.INTER_NEAREST)
 
-def resize_pixel_art(image, scale_factor):
-    """Resize image using pixel art scaling"""
-    return scale_down(image, scale_factor)
+def resize_pixel_art(image, scale_factor, rescale_to_original=False, original_size=None):
+    """
+    Resize image using pixel art scaling
+    
+    Args:
+        image: numpy array (H, W, C)
+        scale_factor: int, factor to reduce image by
+        rescale_to_original: bool, whether to rescale back to original size
+        original_size: tuple (width, height), original image dimensions
+    """
+    # Scale down first
+    downscaled = scale_down(image, scale_factor)
+    
+    # If rescaling is requested and we have original size
+    if rescale_to_original and original_size:
+        return cv2.resize(downscaled, original_size, interpolation=cv2.INTER_NEAREST)
+    
+    return downscaled
 
 def convert_to_grayscale(image):
     """Convert image to grayscale while preserving dimensions"""

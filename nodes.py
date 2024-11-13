@@ -19,6 +19,7 @@ class ComfyUIPixelArtAdvanced:
                     "max": 16,
                     "step": 1
                 }),
+                "rescale_to_original": ("BOOLEAN", {"default": False}),
                 "color_mode": (["rgb", "grayscale", "bw"],),
                 "colors": ("INT", {
                     "default": 16,
@@ -46,15 +47,18 @@ class ComfyUIPixelArtAdvanced:
     FUNCTION = "process"
     CATEGORY = "image/Pixel Art"
 
-    def process(self, image, downscale_factor, color_mode, colors, 
+    def process(self, image, downscale_factor, rescale_to_original, color_mode, colors, 
                 quantization_method, dithering, palette_type, 
                 custom_palette=None, palette_image=None, palette_size=16):
         # Convert from torch tensor to numpy
         image_np = image[0].cpu().numpy()
         image_np = (image_np * 255).astype(np.uint8)
         
+        # Store original size if rescaling is needed
+        original_size = (image_np.shape[1], image_np.shape[0]) if rescale_to_original else None
+        
         # Apply pixel art scaling
-        image_np = resize_pixel_art(image_np, downscale_factor)
+        image_np = resize_pixel_art(image_np, downscale_factor, rescale_to_original, original_size)
         
         # Apply color mode conversion
         if color_mode == "grayscale":
