@@ -29,7 +29,7 @@ def scale_up(image, scale_factor):
 
 def resize_pixel_art(image, scale_factor):
     """Resize image using pixel art scaling"""
-    return scale_up(scale_down(image, scale_factor), scale_factor)
+    return scale_down(image, scale_factor)
 
 def convert_to_grayscale(image):
     """Convert image to grayscale while preserving dimensions"""
