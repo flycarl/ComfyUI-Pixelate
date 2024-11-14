@@ -4,9 +4,9 @@ from .utils import resize_pixel_art, convert_to_grayscale, convert_to_bw
 from .utils import PaletteGenerator, Dithering
 import time
 
-class ComfyUIPixelArtAdvanced:
+class ComfyUIPixelate:
     """
-    Advanced Pixel Art node with multiple processing methods
+    Scale Down and Pixelate image
     """
     
     @classmethod

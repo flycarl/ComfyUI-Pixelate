@@ -1,12 +1,12 @@
 """
 Custom nodes for ComfyUI - Pixel Art Effects
 """
-from .nodes import ComfyUIPixelArtAdvanced
+from .nodes import ComfyUIPixelate
 
 NODE_CLASS_MAPPINGS = {
-    "ComfyUIPixelArtAdvanced": ComfyUIPixelArtAdvanced
+    "ComfyUIPixelate": ComfyUIPixelate
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "ComfyUIPixelArtAdvanced": "Advanced Pixel Art"
+    "ComfyUIPixelate": "Pixelate"
 } 
