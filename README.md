@@ -2,6 +2,8 @@
 
 [sd-webui-pixelart](https://github.com/mrreplicart/sd-webui-pixelart) are referenced by many webui users, this node is mean to use it in ComfyUI.
 
+![ComfyUIPixelate](./images/ComfyUIPixelate.png)  
+  
 ## Features
 
 - **Downscaling Options**: Multiple high-quality scaling algorithms:
