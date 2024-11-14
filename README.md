@@ -1,6 +1,6 @@
 # ComfyUIPixelate
 
-A ComfyUI node that implements advanced pixel art generation effects, inspired by [sd-webui-pixelart](https://github.com/mrreplicart/sd-webui-pixelart).
+[sd-webui-pixelart](https://github.com/mrreplicart/sd-webui-pixelart) are referenced by many webui users, this node is mean to use it in ComfyUI.
 
 ## Features
 
