@@ -56,56 +56,63 @@ class ComfyUIPixelate:
         image_np = image[0].cpu().numpy()
         image_np = (image_np * 255).astype(np.uint8)
         
-        print(f"Conversion to numpy: {time.time() - start_time:.2f}s   ")
+        # Separate RGB and Alpha channels
+        has_alpha = image_np.shape[-1] == 4
+        if has_alpha:
+            rgb_channels = image_np[:, :, :3]
+            alpha_channel = image_np[:, :, 3]
+        else:
+            rgb_channels = image_np
         
         # Store original size if rescaling is needed
-        original_size = (image_np.shape[1], image_np.shape[0]) if rescale_to_original else None
+        original_size = (rgb_channels.shape[1], rgb_channels.shape[0]) if rescale_to_original else None
         
         # Apply pixel art scaling with new parameters
-        t0 = time.time()
-        image_np = resize_pixel_art(
-            image_np,
+        rgb_channels = resize_pixel_art(
+            rgb_channels,
             downscale_factor,
             rescale_to_original=rescale_to_original,
             original_size=original_size,
             scale_down_mode=scale_mode
         )
-        print(f"Pixel art scaling ({scale_mode}): {time.time() - t0:.2f}s   ")
+        
+        if has_alpha:
+            alpha_channel = resize_pixel_art(
+                alpha_channel[..., np.newaxis],
+                downscale_factor,
+                rescale_to_original=rescale_to_original,
+                original_size=original_size,
+                scale_down_mode=scale_mode
+            )
         
         # Apply color mode conversion
-        t0 = time.time()
         if color_mode == "grayscale":
-            image_np = convert_to_grayscale(image_np)
+            rgb_channels = convert_to_grayscale(rgb_channels)
         elif color_mode == "bw":
-            image_np = convert_to_bw(image_np)
-        print(f"Color mode conversion: {time.time() - t0:.2f}s   ")
+            rgb_channels = convert_to_bw(rgb_channels)
             
         # Get palette
-        t0 = time.time()
         if palette_image is not None:
-            # Convert palette image from torch tensor to numpy
             palette_np = palette_image[0].cpu().numpy()
             palette_np = (palette_np * 255).astype(np.uint8)
-            palette = PaletteGenerator.get_palette(palette_np, palette_size)
-        else:  # adaptive
-            print(f"get_palette use {quantization_method}")
-            palette = PaletteGenerator.get_palette(image_np, colors, quantization_method)
-
-        print(f"Palette generation: {time.time() - t0:.2f}s   ")
+            palette = PaletteGenerator.get_palette(palette_np[:, :, :3], palette_size)
+        else:
+            palette = PaletteGenerator.get_palette(rgb_channels, colors, quantization_method)
                 
         # Apply dithering if requested
-        t0 = time.time()
         if dithering == "floyd-steinberg":
-            image_np = Dithering.floyd_steinberg(image_np, palette)
+            rgb_channels = Dithering.floyd_steinberg(rgb_channels, palette)
         else:
-            image_np = Dithering.simple_quantize(image_np, palette)
-        print(f"Dithering: {time.time() - t0:.2f}s")
+            rgb_channels = Dithering.simple_quantize(rgb_channels, palette)
+        
+        # Recombine RGB and Alpha channels
+        if has_alpha:
+            image_np = np.dstack((rgb_channels, alpha_channel))
+        else:
+            image_np = rgb_channels
             
         # Convert back to torch tensor
         result = torch.from_numpy(image_np.astype(np.float32) / 255.0)
         result = result.unsqueeze(0)
-        print(f"Conversion to tensor: {time.time() - t0:.2f}s   ")
-        
-        print(f"Total processing time: {time.time() - start_time:.2f}s   ")
         
         return (result,)
