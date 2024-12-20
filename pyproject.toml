@@ -1,0 +1,14 @@
+[project]
+name = "comfyui-pixelate"
+description = "[a/sd-webui-pixelart](https://github.com/mrreplicart/sd-webui-pixelart) are referenced by many webui users, this node is mean to use it in ComfyUI."
+version = "1.0.0"
+license = {file = "LICENSE"}
+
+[project.urls]
+Repository = "https://github.com/flycarl/ComfyUI-Pixelate"
+#  Used by Comfy Registry https://comfyregistry.org
+
+[tool.comfy]
+PublisherId = ""
+DisplayName = "ComfyUI-Pixelate"
+Icon = ""
